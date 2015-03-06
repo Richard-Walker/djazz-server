@@ -1,0 +1,10 @@
+[Unit]
+Description=djazz service
+Requires=cronie.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python -m djazz
+
+[Install]
+WantedBy=multi-user.target
