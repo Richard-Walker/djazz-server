@@ -1,21 +1,28 @@
 import RPi.GPIO as GPIO
-import time
+from time import sleep
 
 
-puzhenPin = 26
+class Settings:
+    pin = 26
 
 
 def startStop():
     GPIO.setmode(GPIO.BCM)
-    GPIO.setup(puzhenPin, GPIO.OUT)
+    GPIO.setup(Settings.pin, GPIO.OUT)
 
-    GPIO.output(puzhenPin, 1)
-    time.sleep(1)
-    GPIO.output(puzhenPin, 0)
+    GPIO.output(Settings.pin, 1)
+    sleep(1)
+    GPIO.output(Settings.pin, 0)
 
     GPIO.cleanup()
 
 
-# If launched as script -> send startStop RF command
-if __name__ == '__main__':
+def releaseScent(duration):
     startStop()
+    sleep(duration)
+    startStop()
+
+
+# If launched as script -> test releaseScent() function
+if __name__ == '__main__':
+    releaseScent(10)
