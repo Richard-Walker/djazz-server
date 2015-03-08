@@ -16,12 +16,13 @@ def setCron(event):
     url = 'http://127.0.0.1:5000/events/%s' % objectId
     data = '\'{"enabled": false}\''
     header = '\'Content-Type: application/json\''
-    command1 = 'curl -X PATCH -i %s -H %s -d %s' % (url, header, data)
+    cmdUpdate = 'curl -X PATCH -i %s -H %s -d %s' % (url, header, data)
 
     path = os.path.dirname(os.path.abspath(__file__))
-    command2 = 'python %s/scripts/events/%s.py' % (path, name)
+    cmdScript = 'python %s/scripts/events/%s.py' % (path, name)
+    logFile = '/var/log/djazz/event_%s.log' % name
 
-    command = command1 + '; ' + command2
+    command = '%s; %s  >> %s 2>&1' % (cmdUpdate, cmdScript, logFile)
 
     # Find job from comment, create one if none
     comment = 'djazz_%s' % objectId
@@ -44,7 +45,7 @@ if __name__ == '__main__':
         '_id': '000000ac2083d669b98ccdeb',
         'name': 'dummy',
         'enabled': False,
-        'name': 'Dummy event',
+        'title': 'Dummy event',
         'time': datetime(2015, 1, 2, 3, 4)
     })
     print('Cron job set for dummy event')

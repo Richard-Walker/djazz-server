@@ -4,6 +4,7 @@ Requires=cronie.service
 
 [Service]
 Type=simple
+ExecStartPre=mkdir -p /var/log/djazz
 ExecStart=/usr/bin/python -m djazz
 
 [Install]
