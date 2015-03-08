@@ -1,0 +1,348 @@
+#include "pir.h"
+#include "sendirparser.h"
+#include "irreceiveparser.h"
+#include "buttonparser.h"
+#include "irlearnparser.h"
+
+PIR::PIR(const std::string &serial, unsigned int version, IPIR::Type type, const std::string &path, PIR_Settings *settings, PIRClosedCallback closedCallback) :
+    m_Serial(serial),
+    m_Version(version),
+    m_Type(type),
+    m_Path(path),
+    m_Settings(settings),
+    m_ClosedCallback(closedCallback),
+    m_Device(0),
+    m_ExitThread(false),
+    m_IrSending(false)
+{
+
+    m_SendIRParser = IParserPtr( new SendIRParser(m_Serial, m_Settings, std::bind(&PIR::irSendingDone, this) ));
+    m_UnknownParser = IParserPtr( new UnknownParser());
+    m_ReceiveParser = IParserPtr( new IRReceiveParser( m_Serial, m_Settings));
+    m_ButtonParser = IParserPtr( new ButtonParser( m_Serial, m_Settings ));
+    m_IRLearnParser = IParserPtr( new IRLearnParser( m_Serial, m_Settings));
+
+
+    pthread_mutex_init(&m_Mutex, 0);
+    pthread_mutex_init(&m_FunctionQueueMutex, 0);
+
+    m_Device = hid_open_path(path.c_str());
+    if ( !m_Device )
+    {
+        throw std::exception();
+    }
+
+    if ( pthread_create(&m_Thread, 0, &PIR::_proc, this ) != 0 )
+    {
+        hid_close(m_Device);
+        m_Device = 0;
+        throw std::exception();
+    }
+}
+
+PIR::~PIR()
+{
+    m_ExitThread = true;
+    
+    void * retVal;
+    pthread_join(m_Thread, &retVal);
+    pthread_mutex_lock(&m_Mutex);
+    pthread_mutex_unlock(&m_Mutex);
+    pthread_mutex_destroy(&m_Mutex);
+    pthread_mutex_destroy(&m_FunctionQueueMutex);
+
+    if ( m_Device != 0 )
+    {
+        hid_close(m_Device);
+        m_Device = 0;
+    }
+}
+
+std::string PIR::serial() const
+{
+    return m_Serial;
+}
+
+unsigned int PIR::version() const
+{
+    return m_Version;
+}
+
+std::string PIR::path() const
+{
+    return m_Path;
+}
+
+bool PIR::sendCCF(const std::string ccf, unsigned char bitmask, unsigned char repeats)
+{
+
+    IRSendPtr s;
+    try
+    {
+        s = IRSendPtr( new IRSend(ccf, bitmask, repeats) );
+    }
+    catch ( std::exception)
+    {
+        return false;
+    }
+
+    queue([this, s] (){
+
+        if ( m_IrSending )
+        {
+            m_QueuedIrSignals.push_back( s );
+        }
+        else
+        {
+            startCCFSend(s.get());
+        }
+
+    });
+
+    return true;
+}
+
+bool PIR::stopIR()
+{
+	queue([this]() {
+		unsigned char data[65];
+		data[0] = char(0);
+		data[1] = 0x10;		
+		if (m_Device)
+		{
+			hid_write(m_Device, data, 65);
+		}
+	});
+
+	return true;
+}
+
+bool PIR::blink(unsigned char count)
+{
+    queue([this,count]() {
+        unsigned char data[65];
+        data[0] = char(0);
+        data[1] = 0x27;
+        data[2] = count;
+        if ( m_Device )
+        {
+            hid_write(m_Device, data, 65);
+        }
+    });
+
+    return true;
+}
+
+bool PIR::learn()
+{
+    if ( m_Type != IPIR::PIR1 )
+    {
+        return false;
+    }
+    queue([this]() {
+        unsigned char data[65];
+        data[0] = char(0);
+        data[1] = 0x21;
+        if ( m_Device )
+        {
+            hid_write(m_Device, data, 65);
+        }
+    });
+
+    return true;
+}
+
+bool PIR::cancelLearn()
+{
+    if ( m_Type != IPIR::PIR1 )
+    {
+        return false;
+    }
+    queue([this]() {
+        unsigned char data[65];
+        data[0] = char(0);
+        data[1] = 0x22;
+        if ( m_Device )
+        {
+            hid_write(m_Device, data, 65);
+        }
+    });
+
+    return true;
+}
+
+void PIR::startCCFSend( const IRSend * send )
+{
+    m_IrSending = true;
+
+    unsigned char bitmask = send->bitmask();
+    unsigned char repeats = send->repeats();
+    const unsigned int * ccf = send->ccf();
+    unsigned int words_total = send->count();
+
+    unsigned int out_pos = 0;
+    unsigned int in_pos = 0;
+    unsigned char stackBuffer[65];
+    unsigned char * buffer = stackBuffer;
+    unsigned int len = 64;
+
+    while (in_pos < words_total )
+    {
+
+        out_pos = 4;
+        buffer[0] = 0;
+        buffer[1] = 0x0e;
+        buffer[2] = 0;
+        if ( in_pos==0 )
+        {
+            //begin flag
+            buffer[2] |= 0x01;
+        }
+        if ( ( buffer[2] & 0x01 ) == 0x01 ) {
+            buffer[out_pos++] = repeats;
+            buffer[out_pos++] = bitmask;
+        }
+
+        while ( (out_pos < (len -1) ) && (in_pos < words_total))
+        {
+            buffer[out_pos++] = ccf[in_pos] >> 8;
+            buffer[out_pos++] = ccf[in_pos++] & 0xff;
+        }
+
+        buffer[3] = out_pos - 4;
+
+        if ( in_pos == words_total )
+        {
+            //end flag.
+            buffer[2] |= 0x02;
+        }
+
+        if ( m_Device )
+        {
+            hid_write(m_Device, buffer, 65);
+        }
+    }
+}
+
+void PIR::queue(QueuedFunction f)
+{
+    pthread_mutex_lock(&m_FunctionQueueMutex);
+    m_QueuedFunctions.push_back(f);
+    pthread_mutex_unlock(&m_FunctionQueueMutex);
+}
+
+void PIR::irSendingDone()
+{
+    m_IrSending = false;
+    if ( m_QueuedIrSignals.size() > 0 )
+    {
+        IRSendPtr s = m_QueuedIrSignals.front();
+        m_QueuedIrSignals.pop_front();
+        startCCFSend( s.get() );
+    }
+}
+
+IPIR::Type PIR::type() const
+{
+    return m_Type;
+}
+
+
+void * PIR::_proc(void *attr)
+{
+    PIR * pir = (PIR*) attr;
+    pir->proc();
+    return 0;
+}
+
+size_t PIR::functionQueueSize()
+{
+    size_t len = 0;
+    pthread_mutex_lock(&m_FunctionQueueMutex);
+    len = m_QueuedFunctions.size();
+    pthread_mutex_unlock(&m_FunctionQueueMutex);
+    return len;
+}
+
+void PIR::proc()
+{
+    pthread_mutex_lock(&m_Mutex);
+    m_StartupSignal.broadcast(true);
+
+    unsigned char buffer[65];
+
+    while ( !(m_ExitThread && functionQueueSize() == 0) )
+    {
+        if ( !m_Device )
+        {
+            break;
+        }
+
+        int read = hid_read_timeout(m_Device, (unsigned char *)buffer, 64, 10);
+
+        if ( read == 0 )
+        {
+            pthread_mutex_lock(&m_FunctionQueueMutex);
+            while ( m_QueuedFunctions.size() > 0 )
+            {
+                QueuedFunction f = m_QueuedFunctions.front();
+                m_QueuedFunctions.pop_front();
+                pthread_mutex_unlock(&m_FunctionQueueMutex);
+                f();
+                pthread_mutex_lock(&m_FunctionQueueMutex);
+            }
+            pthread_mutex_unlock(&m_FunctionQueueMutex);
+            continue;
+        }
+
+
+        if ( read < 0 )
+        {
+            // this happens when the device is removed from the system.
+            m_ClosedCallback(m_Serial);
+			// m_ClosedCallback removes us from the pointer list. Just bail!
+			return;
+        }
+
+        if ( !m_CurrentParser )
+        {
+
+            switch ( buffer[0] )
+            {
+            case 0x0a:
+                m_CurrentParser = m_ReceiveParser;
+                break;
+            case 0x0f:
+                m_CurrentParser = m_SendIRParser;
+                break;
+            case 0x10:
+                m_CurrentParser = m_ButtonParser;
+                break;
+            case 0x0c:
+                m_CurrentParser = m_IRLearnParser;
+                break;
+            default:
+                m_CurrentParser = m_UnknownParser;
+            }
+        }
+
+
+        if ( m_CurrentParser->add(buffer, read ))
+        {
+            m_CurrentParser.reset();
+        }
+    }
+
+    hid_close(m_Device);
+    m_Device = 0;    
+    pthread_mutex_unlock(&m_Mutex);
+
+}
+
+void PIR::waitForStartup()
+{    
+    while ( !m_StartupSignal.wait() )
+    {
+    }
+}
+
