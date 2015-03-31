@@ -39,8 +39,9 @@ def asyncFunc(func):
 
 
 #
-# Iterator that makes <count> lapses of <duration> seconds
-# Works by waiting some time before yielding the next item (timestamp)
+# Iterator that makes <count> time lapses of <duration> seconds
+# Works by waiting some time before yielding the next item
+# The yielded item is the new lapse end datetime (timestamp)
 #
 def timeLapses(duration, count):
     from time import time, sleep
