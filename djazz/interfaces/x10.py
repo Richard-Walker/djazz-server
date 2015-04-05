@@ -7,9 +7,15 @@ class Settings:
     cmd = '/usr/local/bin/heyu'
 
 
-class Addresses:
-    livingLights = 'F8'
-    bedroomLight = 'F9'
+Addresses = {
+    "living": {
+        "mainlights": 'F8',
+        "moonlights": 'E9'
+    },
+    "bedroom": {
+        "mainlights": 'F9'
+    }
+}
 
 
 class DimSpeed(Enum):
@@ -37,5 +43,5 @@ def dimOverPeriod(address, originLevel, targetLevel, minutes):
 
 # If launched as script -> test dim() function
 if __name__ == '__main__':
-    dim(Addresses.livingLights, 50, DimSpeed.slow)
+    dim(Addresses['living']['mainlights'], 50, DimSpeed.slow)
     # dimOverPeriod(Addresses.livingLights, 0, 100, 30)

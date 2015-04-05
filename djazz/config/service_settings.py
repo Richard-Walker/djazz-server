@@ -13,6 +13,8 @@ ITEM_METHODS = ['GET', 'PATCH', 'PUT', 'DELETE']
 
 CACHE_CONTROL = "private, max-age=0, no-cache"
 
+# ------ EVENTS ----------------------------------
+
 eventSchema = {
     # Schema definition, based on Cerberus grammar. Check the Cerberus project
     # (https://github.com/nicolaiarocci/cerberus) for details.
@@ -46,4 +48,44 @@ events = {
     'schema': eventSchema
 }
 
-DOMAIN = {'events': events}
+# ------ THINGS ----------------------------------
+
+thingStateSchema = {
+    # Lights
+    'level': {
+        'type': 'integer',
+        'required': False,
+        'min': 0,
+        'max': 100
+    }
+}
+
+thingSchema = {
+    'name': {
+        'type': 'string',
+        'required': True
+    },
+    'room': {
+        'type': 'string',
+        'required': True
+    },
+    'type': {
+        'type': 'string',
+        'required': True,
+        'allowed': ['light']
+    },
+    'state': {
+        'type': 'dict',
+        'schema': thingStateSchema,
+        'required': True
+    }
+}
+
+things = {
+    'schema': thingSchema
+}
+
+DOMAIN = {
+    'events': events,
+    'things': things
+}
