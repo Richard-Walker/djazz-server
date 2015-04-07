@@ -6,7 +6,7 @@ from time import sleep
 
 @asyncFunc
 def dimLight():
-    x10.dimOverPeriod(x10.Addresses['bedroom']['mainlight'], 0, 100, minutes=30)
+    x10.dimOverPeriod(x10.Addresses['bedroom']['mainlights'], 0, 100, minutes=30)
 
 
 @asyncFunc
