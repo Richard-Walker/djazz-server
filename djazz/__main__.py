@@ -1,13 +1,13 @@
-from djazz import events
+from djazz import scheduler
 from eve import Eve
-from djazz.interfaces import x10
+from djazz.interfaces import x10, pir
 
 
 # Event hook
 def eventUpdated(updates, original):
     event = original.copy()
     event.update(updates)
-    events.setCron(event)
+    scheduler.setCron(event)
 
 
 # Thing hook
@@ -19,8 +19,17 @@ def thingUpdated(updates, original):
 
 
 app = Eve(settings='config/service_settings.py')
+app.debug = True
+
+
 app.on_updated_events += eventUpdated
 app.on_updated_things += thingUpdated
+
+
+@app.route('/process-message/mopidy-is-back-from-sleep')
+def on_mopidy_is_back_from_sleep():
+    pir.sendCode(pir.IRCodes['marantz']['power'], pir.PirOut.cable, 5)
+    return 'Power-on command sent to Marantz'
 
 
 # If launched as script -> start the REST service

@@ -6,24 +6,25 @@ from time import sleep
 
 @asyncFunc
 def dimLight():
-    x10.dimOverPeriod(x10.Addresses['bedroom']['mainlights'], 0, 100, minutes=30)
+    address = x10.Addresses['bedroom']['mainlights']
+    x10.dimOverPeriod(address, 0, 75, minutes=30)
 
 
 @asyncFunc
 def essentialOils():
-    puz.releaseScent(25 * 60)
+    puz.releaseScent(30 * 60)
 
 
 print('{}: Dim start'.format(datetime.now()))
 p1 = dimLight()
 
-sleep(30)
+sleep(15 * 60)
 
 print('{}: Spread of essential oils start'.format(datetime.now()))
 p2 = essentialOils()
 
-p2.join()
-print('{}: Spread of essential oils end'.format(datetime.now()))
-
 p1.join()
 print('{}: Dim end'.format(datetime.now()))
+
+p2.join()
+print('{}: Spread of essential oils end'.format(datetime.now()))
